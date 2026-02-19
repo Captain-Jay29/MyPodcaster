@@ -1,6 +1,6 @@
 """Tests for agent tools (search_hn, read_url)."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -217,6 +217,63 @@ async def test_read_url_sends_correct_headers(mock_httpx):
     assert headers["X-Retain-Images"] == "none"
     assert headers["X-Retain-Links"] == "none"
     assert "X-Remove-Selector" in headers
+
+
+# ──────────────────────────────────────────────
+# Config override tests
+# ──────────────────────────────────────────────
+
+
+async def test_search_hn_respects_custom_max_search_results(mock_httpx):
+    """Changing MAX_SEARCH_RESULTS should change the cap on returned results."""
+    hits = [
+        {
+            "title": f"Article {i}",
+            "url": f"https://example.com/{i}",
+            "points": 100 - i,
+            "num_comments": 10,
+            "objectID": str(30000 + i),
+            "created_at": "2026-02-19T00:00:00Z",
+        }
+        for i in range(20)
+    ]
+    mock_httpx.get.return_value = _mock_response(json_data={"hits": hits})
+
+    with patch("app.tools.settings") as mock_settings:
+        mock_settings.max_search_results = 5
+        result, error = await search_hn(query="unique_config_cap_test", limit=20)
+
+    assert error is None
+    assert "5." in result
+    assert "6." not in result
+
+
+async def test_read_url_respects_custom_content_length(mock_httpx):
+    """Changing MAX_ARTICLE_CONTENT_LENGTH should change truncation."""
+    long_content = "E" * 5000
+    mock_httpx.get.return_value = _mock_response(text=long_content)
+
+    with patch("app.tools.settings") as mock_settings:
+        mock_settings.max_article_content_length = 500
+        mock_settings.jina_api_key = ""
+        result, error = await read_url("https://unique-test-url-custom-len.example.com")
+
+    assert error is None
+    assert len(result) == 500
+
+
+async def test_read_url_respects_larger_content_length(mock_httpx):
+    """Bumping MAX_ARTICLE_CONTENT_LENGTH up should return more content."""
+    long_content = "F" * 5000
+    mock_httpx.get.return_value = _mock_response(text=long_content)
+
+    with patch("app.tools.settings") as mock_settings:
+        mock_settings.max_article_content_length = 3000
+        mock_settings.jina_api_key = ""
+        result, error = await read_url("https://unique-test-url-larger-len.example.com")
+
+    assert error is None
+    assert len(result) == 3000
 
 
 # ──────────────────────────────────────────────
