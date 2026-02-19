@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5-mini"
     agent_max_turns: int = 15
     agent_max_tokens: int = 100_000
-    agent_timeout_seconds: int = 120
+    agent_timeout_seconds: int = 180
 
     # --- TTS ---
     openai_tts_model: str = "tts-1"

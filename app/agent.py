@@ -238,25 +238,59 @@ async def _agent_loop(
             continue
 
         # ── Final response (no tool calls) ──
-        if choice.finish_reason == "stop" and choice.message.content:
-            content = choice.message.content.strip()
+        content = choice.message.content or ""
+        content = content.strip()
 
-            # Strip markdown code fences if present
-            if content.startswith("```"):
-                content = content.split("\n", 1)[1] if "\n" in content else content
-                if content.endswith("```"):
-                    content = content[:-3]
-                content = content.strip()
+        if not content:
+            logger.warning("[{}] Empty response on turn {}", job.job_id, turn + 1)
+            continue
 
+        # Strip markdown code fences if present (```json ... ``` or ``` ... ```)
+        if content.startswith("```"):
+            # Remove opening fence line
+            content = content.split("\n", 1)[1] if "\n" in content else content[3:]
+            # Remove closing fence
+            if content.rstrip().endswith("```"):
+                content = content.rstrip()[:-3]
+            content = content.strip()
+
+        # Extract JSON object if there's extra text around it
+        json_start = content.find("{")
+        json_end = content.rfind("}")
+        if json_start != -1 and json_end > json_start:
+            content = content[json_start : json_end + 1]
+
+        try:
             script = BriefingScript.model_validate_json(content)
-            logger.info(
-                "[{}] Agent produced {} articles in {} turns, {} tokens",
+        except (json.JSONDecodeError, ValidationError) as parse_err:
+            logger.warning(
+                "[{}] Failed to parse agent output on turn {}: {}. First 200 chars: {!r}",
                 job.job_id,
-                len(script.articles),
                 turn + 1,
-                total_tokens,
+                parse_err,
+                content[:200],
             )
-            return script
+            # Give the agent one more chance — ask it to fix the output
+            messages.append({"role": "assistant", "content": choice.message.content})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Your output was not valid JSON. Please respond with ONLY the JSON object "
+                        "matching the BriefingScript schema. No code fences, no extra text."
+                    ),
+                }
+            )
+            continue
+
+        logger.info(
+            "[{}] Agent produced {} articles in {} turns, {} tokens",
+            job.job_id,
+            len(script.articles),
+            turn + 1,
+            total_tokens,
+        )
+        return script
 
     # Exhausted all turns
     raise AgentTimeoutError(f"Agent did not produce output within {settings.agent_max_turns} turns")
