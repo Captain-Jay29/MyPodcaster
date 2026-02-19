@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 from cachetools import TTLCache
+from loguru import logger
 
 from app.config import settings
 from app.models import BriefingError, ErrorSeverity
@@ -18,6 +19,28 @@ from app.models import BriefingError, ErrorSeverity
 
 _hn_cache: TTLCache = TTLCache(maxsize=100, ttl=300)  # 5 min
 _url_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)  # 1 hour
+
+# ──────────────────────────────────────────────
+# Shared HTTP client (reused across calls to avoid per-request TCP overhead)
+# ──────────────────────────────────────────────
+
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    """Return a shared httpx.AsyncClient, creating it on first use."""
+    global _http_client  # noqa: PLW0603
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(timeout=15.0)
+    return _http_client
+
+
+async def close_http_client() -> None:
+    """Close the shared client. Call during app shutdown."""
+    global _http_client  # noqa: PLW0603
+    if _http_client is not None and not _http_client.is_closed:
+        await _http_client.aclose()
+        _http_client = None
 
 
 # ──────────────────────────────────────────────
@@ -38,6 +61,7 @@ async def search_hn(
     """
     cache_key = f"{query}|{sort}|{limit}"
     if cache_key in _hn_cache:
+        logger.debug("search_hn cache hit: {}", cache_key)
         return _hn_cache[cache_key], None
 
     try:
@@ -45,6 +69,11 @@ async def search_hn(
         params: dict = {"tags": "story", "hitsPerPage": min(limit, 30)}
 
         if query.strip():
+            # NOTE: We use search_by_date (not search) for non-relevance sorts
+            # because Algolia's "search" endpoint ranks by relevance score.
+            # search_by_date returns recent results which we then re-sort by
+            # points client-side (line below). This gives us "top recent articles"
+            # rather than "all-time best matches".
             endpoint = "search" if sort == "relevance" else "search_by_date"
             params["query"] = query
         else:
@@ -55,13 +84,15 @@ async def search_hn(
             params["numericFilters"] = f"created_at_i>{yesterday}"
 
         url = f"{ALGOLIA_BASE}/{endpoint}"
+        logger.info("search_hn query={!r} sort={} endpoint={}", query, sort, endpoint)
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(url, params=params)
-            resp.raise_for_status()
-            data = resp.json()
+        client = _get_http_client()
+        resp = await client.get(url, params=params, timeout=10.0)
+        resp.raise_for_status()
+        data = resp.json()
 
         hits = data.get("hits", [])
+        logger.info("search_hn returned {} hits for query={!r}", len(hits), query)
         if not hits:
             msg = (
                 f"[NO RESULTS] No HN articles found for query '{query}'. "
@@ -102,6 +133,7 @@ async def search_hn(
         return result, None
 
     except httpx.TimeoutException:
+        logger.warning("search_hn timed out for query={!r}", query)
         error = BriefingError(
             code="hn_timeout",
             message="Algolia HN search timed out after 10s",
@@ -114,6 +146,7 @@ async def search_hn(
         return "[TIMEOUT] HN search timed out. Try again or use a different query.", error
 
     except httpx.HTTPStatusError as e:
+        logger.error("search_hn HTTP {} for query={!r}", e.response.status_code, query)
         error = BriefingError(
             code="hn_http_error",
             message=f"Algolia returned HTTP {e.response.status_code}",
@@ -126,6 +159,7 @@ async def search_hn(
         return f"[ERROR] HN search failed with HTTP {e.response.status_code}. Try again.", error
 
     except Exception as e:
+        logger.exception("search_hn unexpected error for query={!r}", query)
         error = BriefingError(
             code="hn_unknown_error",
             message=f"Unexpected error searching HN: {type(e).__name__}: {e!s}",
@@ -151,6 +185,7 @@ async def read_url(url: str) -> tuple[str, BriefingError | None]:
     Returns (content_string, optional_error).
     """
     if url in _url_cache:
+        logger.debug("read_url cache hit: {}", url)
         return _url_cache[url], None
 
     try:
@@ -161,11 +196,13 @@ async def read_url(url: str) -> tuple[str, BriefingError | None]:
         if settings.jina_api_key:
             headers["Authorization"] = f"Bearer {settings.jina_api_key}"
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(f"{JINA_READER_PREFIX}{url}", headers=headers)
-            resp.raise_for_status()
+        logger.info("read_url fetching {}", url)
+        client = _get_http_client()
+        resp = await client.get(f"{JINA_READER_PREFIX}{url}", headers=headers)
+        resp.raise_for_status()
 
         content = resp.text.strip()
+        logger.info("read_url got {} chars from {}", len(content), url)
 
         if len(content) < 100:
             error = BriefingError(
@@ -190,6 +227,7 @@ async def read_url(url: str) -> tuple[str, BriefingError | None]:
         return truncated, None
 
     except httpx.TimeoutException:
+        logger.warning("read_url timed out for {}", url)
         error = BriefingError(
             code="jina_timeout",
             message=f"Timed out reading {url} after 15s",
@@ -206,6 +244,7 @@ async def read_url(url: str) -> tuple[str, BriefingError | None]:
         )
 
     except httpx.HTTPStatusError as e:
+        logger.error("read_url HTTP {} for {}", e.response.status_code, url)
         code_map = {
             403: ("jina_forbidden", "Access denied (likely paywall or bot protection)"),
             429: ("jina_rate_limited", "Rate limited by Jina API"),
@@ -231,6 +270,7 @@ async def read_url(url: str) -> tuple[str, BriefingError | None]:
         )
 
     except Exception as e:
+        logger.exception("read_url unexpected error for {}", url)
         error = BriefingError(
             code="jina_unknown_error",
             message=f"Unexpected error reading {url}: {type(e).__name__}: {e!s}",
