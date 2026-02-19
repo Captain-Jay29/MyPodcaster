@@ -66,7 +66,8 @@ async def search_hn(
 
     try:
         # Build Algolia URL
-        params: dict = {"tags": "story", "hitsPerPage": min(limit, 30)}
+        max_results = settings.max_search_results
+        params: dict = {"tags": "story", "hitsPerPage": min(limit, max_results)}
 
         if query.strip():
             # NOTE: We use search_by_date (not search) for non-relevance sorts
@@ -114,7 +115,7 @@ async def search_hn(
 
         # Format for agent consumption
         lines = []
-        for i, hit in enumerate(hits[:limit]):
+        for i, hit in enumerate(hits[:min(limit, max_results)]):
             title = hit.get("title", "Untitled")
             url_val = hit.get("url", "")
             points = hit.get("points", 0) or 0
@@ -190,8 +191,11 @@ async def read_url(url: str) -> tuple[str, BriefingError | None]:
 
     try:
         headers = {
-            "Accept": "text/markdown",
-            "X-Return-Format": "markdown",
+            "Accept": "text/plain",
+            "X-Respond-With": "text",
+            "X-Retain-Images": "none",
+            "X-Retain-Links": "none",
+            "X-Remove-Selector": "nav, footer, header, .sidebar, .comments",
         }
         if settings.jina_api_key:
             headers["Authorization"] = f"Bearer {settings.jina_api_key}"
@@ -317,7 +321,7 @@ TOOL_DEFINITIONS = [
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Number of results (1-30). Default: 20.",
+                        "description": "Number of results (1-15). Default: 15.",
                     },
                 },
                 "required": [],
