@@ -5,10 +5,11 @@ Searches HN, reads articles, produces a BriefingScript.
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 
 from loguru import logger
 from openai import AsyncOpenAI
+from pydantic import ValidationError
 
 from app.config import settings
 from app.models import (
@@ -94,7 +95,7 @@ code fences, no extra text) matching this schema:
 
 def build_user_message(interests: str, num_articles: int) -> str:
     """Build the initial user message with today's date and interests."""
-    today = datetime.now().strftime("%A, %B %d, %Y")
+    today = datetime.now(UTC).strftime("%A, %B %d, %Y")
     if interests.strip():
         return (
             f"Today is {today}. The listener is interested in: {interests}. "
@@ -300,6 +301,17 @@ async def run_agent(interests: str, num_articles: int, job: Job) -> BriefingScri
             severity=ErrorSeverity.FATAL,
             source="agent",
             context={"parse_error": str(e)},
+        )
+        job.errors.extend([*errors, error])
+        raise
+
+    except ValidationError as e:
+        error = BriefingError(
+            code="agent_bad_output",
+            message=f"Agent output didn't match schema: {e!s}"[:200],
+            severity=ErrorSeverity.FATAL,
+            source="agent",
+            context={"validation_error": str(e)},
         )
         job.errors.extend([*errors, error])
         raise

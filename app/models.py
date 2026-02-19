@@ -2,7 +2,7 @@
 All data models in one place. No business logic except computed properties.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -24,7 +24,7 @@ class BriefingError(BaseModel):
     severity: ErrorSeverity
     source: str
     context: dict = {}
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     recovered: bool = False
     recovery_action: str = ""
 
@@ -112,7 +112,7 @@ class Job(BaseModel):
     result: JobResult | None = None
     error: JobError | None = None
     errors: list[BriefingError] = []  # all errors accumulated during processing
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     completed_at: datetime | None = None
 
 
