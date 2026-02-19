@@ -2,6 +2,7 @@
 Entry point. Creates FastAPI app, mounts Gradio, sets up lifespan.
 """
 
+import contextlib
 from contextlib import asynccontextmanager
 
 import gradio as gr
@@ -35,7 +36,8 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Audio Briefing Engine on port {}", settings.port)
     logger.info("Model: {}, TTS: {}", settings.openai_model, settings.openai_tts_model)
-    cleanup_old_audio()
+    with contextlib.suppress(Exception):
+        cleanup_old_audio()
     cleanup_old_jobs()
     yield
     # Shutdown
