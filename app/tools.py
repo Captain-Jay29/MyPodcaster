@@ -115,7 +115,7 @@ async def search_hn(
 
         # Format for agent consumption
         lines = []
-        for i, hit in enumerate(hits[:min(limit, max_results)]):
+        for i, hit in enumerate(hits[: min(limit, max_results)]):
             title = hit.get("title", "Untitled")
             url_val = hit.get("url", "")
             points = hit.get("points", 0) or 0
