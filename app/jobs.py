@@ -2,11 +2,13 @@
 In-memory job store. Manages lifecycle of briefing generation jobs.
 """
 
+import json
 import uuid
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from loguru import logger
+from pydantic import ValidationError
 
 from app.agent import AgentTimeoutError, run_agent
 from app.models import (
@@ -130,12 +132,23 @@ async def process_briefing(job: Job) -> None:
 
     except (AgentTimeoutError, TimeoutError) as e:
         job.status = JobStatus.FAILED
+        error_msg = str(e)[:500]
         job.error = JobError(
             code=job.errors[-1].code if job.errors else "agent_error",
-            message=str(e),
+            message=error_msg,
             details=summarize_errors(job.errors),
         )
-        logger.error("Job {} failed (agent): {}", job.job_id, e)
+        logger.error("Job {} failed (agent timeout): {}", job.job_id, error_msg)
+
+    except (json.JSONDecodeError, ValidationError) as e:
+        job.status = JobStatus.FAILED
+        error_msg = f"Agent output parsing failed: {type(e).__name__}: {str(e)[:300]}"
+        job.error = JobError(
+            code="agent_bad_output",
+            message=error_msg,
+            details=summarize_errors(job.errors),
+        )
+        logger.error("Job {} failed (bad output): {}", job.job_id, error_msg)
 
     except (TTSCompleteFailureError, TTSMajorityFailureError) as e:
         job.status = JobStatus.FAILED
