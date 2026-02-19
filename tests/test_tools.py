@@ -132,6 +132,94 @@ async def test_read_url_forbidden(mock_httpx):
 
 
 # ──────────────────────────────────────────────
+# Edge case tests for context bloat fixes
+# ──────────────────────────────────────────────
+
+
+async def test_search_hn_caps_results_to_max(mock_httpx):
+    """search_hn should never return more than max_search_results items."""
+    # Return 30 hits from Algolia, but our cap is 15
+    hits = [
+        {
+            "title": f"Article {i}",
+            "url": f"https://example.com/{i}",
+            "points": 100 - i,
+            "num_comments": 10,
+            "objectID": str(10000 + i),
+            "created_at": "2026-02-19T00:00:00Z",
+        }
+        for i in range(30)
+    ]
+    mock_httpx.get.return_value = _mock_response(json_data={"hits": hits})
+
+    result, error = await search_hn(query="unique_cap_test_xyz", limit=30)
+
+    assert error is None
+    # Should only have 15 numbered entries (1. through 15.)
+    assert "15." in result
+    assert "16." not in result
+
+
+async def test_search_hn_limit_below_max(mock_httpx):
+    """search_hn should respect limit when it's below max_search_results."""
+    hits = [
+        {
+            "title": f"Article {i}",
+            "url": f"https://example.com/{i}",
+            "points": 100 - i,
+            "num_comments": 10,
+            "objectID": str(20000 + i),
+            "created_at": "2026-02-19T00:00:00Z",
+        }
+        for i in range(15)
+    ]
+    mock_httpx.get.return_value = _mock_response(json_data={"hits": hits})
+
+    result, error = await search_hn(query="unique_low_limit_test", limit=3)
+
+    assert error is None
+    assert "3." in result
+    assert "4." not in result
+
+
+async def test_read_url_content_at_boundary(mock_httpx):
+    """read_url should return full content when exactly at truncation limit."""
+    exact_content = "B" * 2000
+    mock_httpx.get.return_value = _mock_response(text=exact_content)
+
+    result, error = await read_url("https://unique-test-url-boundary.example.com")
+
+    assert error is None
+    assert len(result) == 2000
+
+
+async def test_read_url_short_content_no_truncation(mock_httpx):
+    """read_url should not truncate content shorter than limit."""
+    short_content = "C" * 500
+    mock_httpx.get.return_value = _mock_response(text=short_content)
+
+    result, error = await read_url("https://unique-test-url-short.example.com")
+
+    assert error is None
+    assert len(result) == 500
+
+
+async def test_read_url_sends_correct_headers(mock_httpx):
+    """read_url should send Jina headers that strip images, links, and boilerplate."""
+    mock_httpx.get.return_value = _mock_response(text="D" * 200)
+
+    await read_url("https://unique-test-url-headers.example.com")
+
+    call_kwargs = mock_httpx.get.call_args
+    headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers", {})
+
+    assert headers["X-Respond-With"] == "text"
+    assert headers["X-Retain-Images"] == "none"
+    assert headers["X-Retain-Links"] == "none"
+    assert "X-Remove-Selector" in headers
+
+
+# ──────────────────────────────────────────────
 # Integration tests (hit real APIs)
 # ──────────────────────────────────────────────
 
