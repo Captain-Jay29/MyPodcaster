@@ -1,5 +1,7 @@
 """Unit tests for the agent module."""
 
+from unittest.mock import AsyncMock, patch
+
 from app.agent import build_user_message
 from app.models import Job
 
@@ -38,16 +40,14 @@ async def test_execute_tool_unknown():
     assert len(errors) == 0
 
 
-async def test_execute_tool_search_hn_updates_progress(mock_httpx):
+async def test_execute_tool_search_hn_updates_progress():
     """execute_tool should update job progress message for search_hn."""
-    from unittest.mock import AsyncMock
-
     from app.agent import execute_tool
 
     job = Job(job_id="test123")
     errors = []
 
-    with __import__("unittest.mock", fromlist=["patch"]).patch(
+    with patch(
         "app.agent.search_hn",
         new_callable=AsyncMock,
         return_value=("Found 5 articles:\n\n1. [100 pts] Test", None),
@@ -57,16 +57,14 @@ async def test_execute_tool_search_hn_updates_progress(mock_httpx):
     assert "Searching HN" in job.progress.message or "Found" in result
 
 
-async def test_execute_tool_read_url_increments_on_success(mock_httpx):
+async def test_execute_tool_read_url_increments_on_success():
     """articles_read should only increment on successful read."""
-    from unittest.mock import AsyncMock
-
     from app.agent import execute_tool
 
     job = Job(job_id="test123")
     errors = []
 
-    with __import__("unittest.mock", fromlist=["patch"]).patch(
+    with patch(
         "app.agent.read_url",
         new_callable=AsyncMock,
         return_value=("Article content here...", None),
@@ -74,3 +72,30 @@ async def test_execute_tool_read_url_increments_on_success(mock_httpx):
         await execute_tool("read_url", {"url": "https://example.com"}, job, errors)
 
     assert job.progress.articles_read == 1
+
+
+async def test_execute_tool_read_url_no_increment_on_error():
+    """articles_read should NOT increment when read_url returns an error."""
+    from app.agent import execute_tool
+    from app.models import BriefingError, ErrorSeverity
+
+    job = Job(job_id="test123")
+    errors = []
+
+    read_error = BriefingError(
+        code="jina_timeout",
+        message="Timed out",
+        severity=ErrorSeverity.RECOVERABLE,
+        source="tools.read_url",
+        recovered=True,
+    )
+
+    with patch(
+        "app.agent.read_url",
+        new_callable=AsyncMock,
+        return_value=("[TIMEOUT] Could not read article", read_error),
+    ):
+        await execute_tool("read_url", {"url": "https://example.com"}, job, errors)
+
+    assert job.progress.articles_read == 0
+    assert len(errors) == 1
