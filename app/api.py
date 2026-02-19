@@ -67,14 +67,28 @@ async def get_article_audio(job_id: str, article_index: int):
     """Stream a single article's MP3 audio."""
     job = get_job(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "not_found", "message": f"Job {job_id} not found"}},
+        )
 
     if job.status != JobStatus.COMPLETED or not job.result:
-        raise HTTPException(status_code=400, detail="Briefing not ready")
+        raise HTTPException(
+            status_code=400,
+            detail={"error": {"code": "not_ready", "message": "Briefing not ready"}},
+        )
 
     filepath = job.result.audio_files.get(article_index)
     if not filepath or not Path(filepath).exists():
-        raise HTTPException(status_code=404, detail="Audio not available for this article")
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": {
+                    "code": "audio_not_found",
+                    "message": "Audio not available for this article",
+                }
+            },
+        )
 
     return FileResponse(
         filepath,

@@ -4,7 +4,7 @@ In-memory job store. Manages lifecycle of briefing generation jobs.
 
 import uuid
 from collections import defaultdict
-from datetime import datetime
+from datetime import UTC, datetime
 
 from loguru import logger
 
@@ -29,6 +29,8 @@ from app.tts import (
 # Job Store (in-memory)
 # ──────────────────────────────────────────────
 
+# NOTE: Jobs are never evicted — acceptable for a demo app.
+# A production system would add TTL-based cleanup or use a database.
 _jobs: dict[str, Job] = {}
 
 
@@ -108,7 +110,7 @@ async def process_briefing(job: Job) -> None:
             articles=script.articles,
             audio_files=audio_files,
         )
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(UTC)
 
         if job.errors:
             logger.warning("Job {} completed with {} errors", job.job_id, len(job.errors))
