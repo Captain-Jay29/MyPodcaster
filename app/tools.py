@@ -53,12 +53,14 @@ ALGOLIA_BASE = "https://hn.algolia.com/api/v1"
 async def search_hn(
     query: str = "",
     sort: str = "points",
-    limit: int = 20,
+    limit: int | None = None,
 ) -> tuple[str, BriefingError | None]:
     """
     Search Hacker News via Algolia API.
     Returns (formatted_results_string, optional_error).
     """
+    if limit is None:
+        limit = settings.max_search_results
     cache_key = f"{query}|{sort}|{limit}"
     if cache_key in _hn_cache:
         logger.debug("search_hn cache hit: {}", cache_key)
@@ -295,61 +297,67 @@ async def read_url(url: str) -> tuple[str, BriefingError | None]:
 # OpenAI Tool Definitions (for function calling)
 # ──────────────────────────────────────────────
 
-TOOL_DEFINITIONS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "search_hn",
-            "description": (
-                "Search Hacker News articles via Algolia. "
-                "Returns titles, URLs, points, and comment counts. "
-                "Call with no query to browse today's top stories. "
-                "Call with a query to find topic-specific articles. "
-                "You can call this multiple times with different queries to expand your search."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Search terms. Empty or omit for top stories.",
+
+def get_tool_definitions() -> list[dict]:
+    """Build tool definitions at call time so they reflect current config."""
+    max_results = settings.max_search_results
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_hn",
+                "description": (
+                    "Search Hacker News articles via Algolia. "
+                    "Returns titles, URLs, points, and comment counts. "
+                    "Call with no query to browse today's top stories. "
+                    "Call with a query to find topic-specific articles. "
+                    "You can call this multiple times with different queries to expand your search."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search terms. Empty or omit for top stories.",
+                        },
+                        "sort": {
+                            "type": "string",
+                            "enum": ["relevance", "date", "points"],
+                            "description": "Sort order. Default: points.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": (
+                                f"Number of results (1-{max_results}). Default: {max_results}."
+                            ),
+                        },
                     },
-                    "sort": {
-                        "type": "string",
-                        "enum": ["relevance", "date", "points"],
-                        "description": "Sort order. Default: points.",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Number of results (1-15). Default: 15.",
-                    },
+                    "required": [],
                 },
-                "required": [],
             },
         },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "read_url",
-            "description": (
-                "Fetch and read the full content of any URL. "
-                "Returns clean text/markdown of the page. "
-                "Use to read article content before summarizing. "
-                "If it fails, you'll get an error message — "
-                "use the article title for a brief mention instead. "
-                "You can call this on multiple URLs in parallel."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The full URL to read.",
+        {
+            "type": "function",
+            "function": {
+                "name": "read_url",
+                "description": (
+                    "Fetch and read the full content of any URL. "
+                    "Returns clean text/markdown of the page. "
+                    "Use to read article content before summarizing. "
+                    "If it fails, you'll get an error message — "
+                    "use the article title for a brief mention instead. "
+                    "You can call this on multiple URLs in parallel."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "The full URL to read.",
+                        },
                     },
+                    "required": ["url"],
                 },
-                "required": ["url"],
             },
         },
-    },
-]
+    ]

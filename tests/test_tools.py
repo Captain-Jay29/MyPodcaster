@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from app.tools import read_url, search_hn
+from app.tools import get_tool_definitions, read_url, search_hn
 
 # ──────────────────────────────────────────────
 # Unit tests (mocked httpx)
@@ -274,6 +274,28 @@ async def test_read_url_respects_larger_content_length(mock_httpx):
 
     assert error is None
     assert len(result) == 3000
+
+
+def test_tool_definitions_reflect_max_search_results():
+    """Tool description for limit should match the configured max_search_results."""
+    with patch("app.tools.settings") as mock_settings:
+        mock_settings.max_search_results = 7
+        defs = get_tool_definitions()
+
+    search_def = defs[0]
+    limit_desc = search_def["function"]["parameters"]["properties"]["limit"]["description"]
+    assert "1-7" in limit_desc
+    assert "Default: 7" in limit_desc
+
+
+def test_tool_definitions_reflect_default_max_search_results():
+    """Tool description should use the real default (15) when config is not overridden."""
+    defs = get_tool_definitions()
+
+    search_def = defs[0]
+    limit_desc = search_def["function"]["parameters"]["properties"]["limit"]["description"]
+    assert "1-15" in limit_desc
+    assert "Default: 15" in limit_desc
 
 
 # ──────────────────────────────────────────────
