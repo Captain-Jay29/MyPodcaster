@@ -182,8 +182,9 @@ async def _agent_loop(
     for turn in range(settings.agent_max_turns):
         logger.debug("[{}] Agent turn {}/{}", job.job_id, turn + 1, settings.agent_max_turns)
 
-        # Check token budget
-        if total_tokens > settings.agent_max_tokens:
+        # Check token budget — force text-only response if exceeded
+        budget_exceeded = total_tokens > settings.agent_max_tokens
+        if budget_exceeded:
             logger.warning(
                 "[{}] Token budget exceeded ({}). Forcing finalization.", job.job_id, total_tokens
             )
@@ -202,7 +203,7 @@ async def _agent_loop(
             model=settings.openai_model,
             messages=messages,
             tools=TOOL_DEFINITIONS,
-            tool_choice="auto",
+            tool_choice="none" if budget_exceeded else "auto",
         )
 
         total_tokens += response.usage.total_tokens if response.usage else 0
@@ -320,8 +321,4 @@ async def run_agent(interests: str, num_articles: int, job: Job) -> BriefingScri
 
 
 class AgentTimeoutError(Exception):
-    pass
-
-
-class AgentOutputError(Exception):
     pass
