@@ -73,10 +73,10 @@ jobs:
       - name: Run unit tests
         env:
           OPENAI_API_KEY: "sk-test-placeholder"
-        run: uv run pytest tests/ -m "not integration and not eval" -v
+        run: uv run pytest tests/ -m "not integration and not eval" -v --no-header || test $? -eq 5
 
       - name: Run integration tests
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: uv run pytest tests/ -m "integration" -v
+        run: uv run pytest tests/ -m "integration" -v --no-header || test $? -eq 5
