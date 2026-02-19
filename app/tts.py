@@ -4,6 +4,7 @@ Text-to-speech pipeline. Generates per-article MP3 files in parallel.
 
 import concurrent.futures as cf
 import os
+import threading
 import time
 from io import BytesIO
 from pathlib import Path
@@ -26,13 +27,16 @@ from app.models import (
 # ──────────────────────────────────────────────
 
 _sync_client: OpenAI | None = None
+_client_lock = threading.Lock()
 
 
 def _get_sync_client() -> OpenAI:
-    """Return a shared sync OpenAI client, creating it on first use."""
+    """Return a shared sync OpenAI client, creating it on first use. Thread-safe."""
     global _sync_client  # noqa: PLW0603
     if _sync_client is None:
-        _sync_client = OpenAI(api_key=settings.openai_api_key)
+        with _client_lock:
+            if _sync_client is None:
+                _sync_client = OpenAI(api_key=settings.openai_api_key)
     return _sync_client
 
 
@@ -170,7 +174,10 @@ def cleanup_old_audio() -> None:
         if files and all(os.path.getmtime(f) < cutoff for f in files):
             for f in files:
                 f.unlink()
-            job_dir.rmdir()
+            try:
+                job_dir.rmdir()
+            except OSError:
+                logger.warning("Could not remove directory {}, it may contain non-MP3 files", job_dir)
             cleaned += 1
 
     if cleaned:
