@@ -177,7 +177,9 @@ def cleanup_old_audio() -> None:
             try:
                 job_dir.rmdir()
             except OSError:
-                logger.warning("Could not remove directory {}, it may contain non-MP3 files", job_dir)
+                logger.warning(
+                    "Could not remove directory {}, it may contain non-MP3 files", job_dir
+                )
             cleaned += 1
 
     if cleaned:
