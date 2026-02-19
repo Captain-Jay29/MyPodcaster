@@ -5,7 +5,6 @@ Entry point. Creates FastAPI app, mounts Gradio, sets up lifespan.
 from contextlib import asynccontextmanager
 
 import gradio as gr
-import sentry_sdk
 from fastapi import FastAPI
 from loguru import logger
 
@@ -21,6 +20,8 @@ from app.ui import build_ui
 # ──────────────────────────────────────────────
 
 if settings.sentry_dsn:
+    import sentry_sdk
+
     sentry_sdk.init(settings.sentry_dsn)
 
 
@@ -57,7 +58,7 @@ app.include_router(router)
 # Mount Gradio UI
 demo = build_ui()
 demo = demo.queue(max_size=20, default_concurrency_limit=5)
-app = gr.mount_gradio_app(app, demo, path="/")
+gr.mount_gradio_app(app, demo, path="/")
 
 
 if __name__ == "__main__":

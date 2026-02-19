@@ -3,6 +3,7 @@ Gradio Blocks UI. Calls internal Python functions directly (same process).
 """
 
 import asyncio
+import contextlib
 
 import gradio as gr
 
@@ -29,8 +30,10 @@ async def generate_briefing_handler(interests: str):
             f"**{job.progress.phase.value.upper()}** | {job.progress.message}",
         )
 
-    # Wait for task to fully complete
-    await task
+    # Wait for task to fully complete (process_briefing catches all exceptions
+    # internally, but guard against truly unexpected escapes)
+    with contextlib.suppress(Exception):
+        await task
 
     if job.status == JobStatus.FAILED:
         error_msg = job.error.message if job.error else "Unknown error"
