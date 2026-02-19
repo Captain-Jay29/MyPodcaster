@@ -96,7 +96,7 @@ async def test_read_url_success(mock_httpx):
     result, error = await read_url("https://unique-test-url-success.example.com")
 
     assert error is None
-    assert len(result) == 4000  # truncated to max_article_content_length
+    assert len(result) == 2000  # truncated to max_article_content_length
 
 
 async def test_read_url_thin_content(mock_httpx):
