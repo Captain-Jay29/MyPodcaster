@@ -4,7 +4,7 @@ In-memory job store. Manages lifecycle of briefing generation jobs.
 
 import uuid
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from loguru import logger
 
@@ -29,8 +29,6 @@ from app.tts import (
 # Job Store (in-memory)
 # ──────────────────────────────────────────────
 
-# NOTE: Jobs are never evicted — acceptable for a demo app.
-# A production system would add TTL-based cleanup or use a database.
 _jobs: dict[str, Job] = {}
 
 
@@ -49,6 +47,19 @@ def create_job(interests: str = "", num_articles: int = 10) -> Job:
 def get_job(job_id: str) -> Job | None:
     """Look up a job by ID."""
     return _jobs.get(job_id)
+
+
+def cleanup_old_jobs() -> None:
+    """Remove jobs older than the audio cache TTL. Called alongside cleanup_old_audio."""
+    from app.config import settings
+
+    cutoff = datetime.now(UTC) - timedelta(hours=settings.audio_cache_ttl_hours)
+    expired = [jid for jid, j in _jobs.items() if j.created_at < cutoff]
+    for jid in expired:
+        del _jobs[jid]
+
+    if expired:
+        logger.info("Cleaned up {} expired jobs", len(expired))
 
 
 # ──────────────────────────────────────────────
