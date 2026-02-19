@@ -146,12 +146,13 @@ async def execute_tool(
         url = arguments.get("url", "")
 
         logger.info("[{}] read_url(url={!r})", job.job_id, url[:80])
-        job.progress.articles_read += 1
-        job.progress.message = f"Reading article {job.progress.articles_read}..."
+        job.progress.message = f"Reading article {job.progress.articles_read + 1}..."
 
         result, error = await read_url(url=url)
         if error:
             errors.append(error)
+        else:
+            job.progress.articles_read += 1
 
         return result
 
