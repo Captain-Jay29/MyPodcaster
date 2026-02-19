@@ -28,6 +28,7 @@ dev = [
     "respx>=0.21.0",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
+    "types-cachetools>=5.5.0",
 ]
 
 # ── Ruff (lint + format) ──────────────────────
