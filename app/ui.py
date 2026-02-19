@@ -23,7 +23,45 @@ CUSTOM_CSS = """
     border-bottom: none;
 }
 .article-row .audio-player {
-    min-width: 220px;
+    min-width: 200px;
+}
+
+/* Compact audio player: fit waveform + duration without overlap */
+.audio-player .minimal-audio-player {
+    width: 100% !important;
+    padding: var(--spacing-xs) var(--spacing-sm) !important;
+    gap: var(--spacing-xs) !important;
+    background: #e8f0fe !important;
+    border-radius: var(--radius-md) !important;
+}
+.audio-player .waveform-wrapper {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+}
+.audio-player .timestamp {
+    font-size: 11px !important;
+    min-width: 32px !important;
+}
+/* Reduce waveform vertical height */
+.audio-player .waveform-wrapper ::part(wrapper) {
+    height: 24px !important;
+    margin-bottom: 0 !important;
+}
+/* Light blue background for the full audio component area */
+.audio-player .component-wrapper {
+    padding: var(--spacing-xs) !important;
+    background: #e8f0fe !important;
+    border-radius: var(--radius-md) !important;
+}
+.audio-player .standard-player {
+    padding: var(--spacing-xs) !important;
+    background: #e8f0fe !important;
+    border-radius: var(--radius-md) !important;
+}
+/* Reduce waveform height in standard player too */
+.audio-player #waveform {
+    height: 28px !important;
 }
 """
 
