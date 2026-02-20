@@ -6,7 +6,7 @@ Provides pre-scraped articles and an instrumented agent run for eval metrics.
 import asyncio
 import time
 from dataclasses import dataclass, field
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 

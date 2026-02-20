@@ -2,7 +2,6 @@
 
 import pytest
 
-
 # ──────────────────────────────────────────────
 # Tool call metrics
 # ──────────────────────────────────────────────
@@ -84,12 +83,7 @@ def test_token_growth_curve(agent_trace, capsys):
 
     for t in turns:
         # Describe tool calls for this turn
-        tool_desc = ""
-        if t.tool_call_count > 0:
-            # Find tool calls that happened around this turn
-            tool_desc = f"{t.tool_call_count} call(s)"
-        else:
-            tool_desc = "(finalize)"
+        tool_desc = f"{t.tool_call_count} call(s)" if t.tool_call_count > 0 else "(finalize)"
 
         lines.append(
             f"{t.turn_num:>4} | {t.prompt_tokens:>8,} | {t.completion_tokens:>10,} | "
