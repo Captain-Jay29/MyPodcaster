@@ -276,6 +276,31 @@ async def test_read_url_respects_larger_content_length(mock_httpx):
     assert len(result) == 3000
 
 
+async def test_read_url_strips_fragment(mock_httpx):
+    """read_url should strip #fragment before fetching via Jina."""
+    mock_httpx.get.return_value = _mock_response(text="G" * 200)
+
+    await read_url("https://unique-test-fragment.example.com/page#section")
+
+    call_args = mock_httpx.get.call_args
+    fetched_url = call_args[0][0] if call_args[0] else call_args.kwargs.get("url", "")
+    assert fetched_url == "https://r.jina.ai/https://unique-test-fragment.example.com/page"
+    assert "#section" not in fetched_url
+
+
+async def test_read_url_dedup_fragments(mock_httpx):
+    """read_url with different fragments on the same URL should only fetch once."""
+    mock_httpx.get.return_value = _mock_response(text="H" * 200)
+
+    result1, err1 = await read_url("https://unique-test-dedup.example.com/page#foo")
+    result2, err2 = await read_url("https://unique-test-dedup.example.com/page#bar")
+
+    assert mock_httpx.get.call_count == 1
+    assert result1 == result2
+    assert err1 is None
+    assert err2 is None
+
+
 def test_tool_definitions_reflect_max_search_results():
     """Tool description for limit should match the configured max_search_results."""
     with patch("app.tools.settings") as mock_settings:
