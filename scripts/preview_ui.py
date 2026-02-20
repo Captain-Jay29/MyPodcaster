@@ -4,10 +4,10 @@ Run: python scripts/preview_ui.py
 No API keys or agent needed.
 """
 
-import os
-import tempfile
-import struct
 import math
+import os
+import struct
+import tempfile
 
 import gradio as gr
 
@@ -173,7 +173,7 @@ def generate_wav(duration_s: float = 5.0) -> str:
 
     samples = samples[:n_samples]
 
-    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)  # noqa: SIM115
     data_size = len(samples) * 2
     tmp.write(b"RIFF")
     tmp.write(struct.pack("<I", 36 + data_size))

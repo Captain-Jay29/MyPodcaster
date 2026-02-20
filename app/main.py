@@ -15,7 +15,7 @@ from app.config import settings
 from app.jobs import cleanup_old_jobs
 from app.tools import close_http_client
 from app.tts import cleanup_old_audio
-from app.ui import build_ui, CUSTOM_CSS, HEAD_HTML
+from app.ui import CUSTOM_CSS, HEAD_HTML, build_ui
 
 # ──────────────────────────────────────────────
 # Sentry (optional)
