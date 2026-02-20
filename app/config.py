@@ -24,7 +24,8 @@ class Settings(BaseSettings):
 
     # --- Jina Reader ---
     jina_api_key: str = ""
-    max_article_content_length: int = 4000  # chars, truncation for read_url
+    max_article_content_length: int = 2000  # chars, truncation for read_url
+    max_search_results: int = 15  # max results per search_hn call
 
     # --- Briefing defaults ---
     default_num_articles: int = 10

@@ -1,11 +1,11 @@
 """Tests for agent tools (search_hn, read_url)."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
 
-from app.tools import read_url, search_hn
+from app.tools import get_tool_definitions, read_url, search_hn
 
 # ──────────────────────────────────────────────
 # Unit tests (mocked httpx)
@@ -96,7 +96,7 @@ async def test_read_url_success(mock_httpx):
     result, error = await read_url("https://unique-test-url-success.example.com")
 
     assert error is None
-    assert len(result) == 4000  # truncated to max_article_content_length
+    assert len(result) == 2000  # truncated to max_article_content_length
 
 
 async def test_read_url_thin_content(mock_httpx):
@@ -129,6 +129,173 @@ async def test_read_url_forbidden(mock_httpx):
 
     assert error is not None
     assert error.code == "jina_forbidden"
+
+
+# ──────────────────────────────────────────────
+# Edge case tests for context bloat fixes
+# ──────────────────────────────────────────────
+
+
+async def test_search_hn_caps_results_to_max(mock_httpx):
+    """search_hn should never return more than max_search_results items."""
+    # Return 30 hits from Algolia, but our cap is 15
+    hits = [
+        {
+            "title": f"Article {i}",
+            "url": f"https://example.com/{i}",
+            "points": 100 - i,
+            "num_comments": 10,
+            "objectID": str(10000 + i),
+            "created_at": "2026-02-19T00:00:00Z",
+        }
+        for i in range(30)
+    ]
+    mock_httpx.get.return_value = _mock_response(json_data={"hits": hits})
+
+    result, error = await search_hn(query="unique_cap_test_xyz", limit=30)
+
+    assert error is None
+    # Should only have 15 numbered entries (1. through 15.)
+    assert "15." in result
+    assert "16." not in result
+
+
+async def test_search_hn_limit_below_max(mock_httpx):
+    """search_hn should respect limit when it's below max_search_results."""
+    hits = [
+        {
+            "title": f"Article {i}",
+            "url": f"https://example.com/{i}",
+            "points": 100 - i,
+            "num_comments": 10,
+            "objectID": str(20000 + i),
+            "created_at": "2026-02-19T00:00:00Z",
+        }
+        for i in range(15)
+    ]
+    mock_httpx.get.return_value = _mock_response(json_data={"hits": hits})
+
+    result, error = await search_hn(query="unique_low_limit_test", limit=3)
+
+    assert error is None
+    assert "3." in result
+    assert "4." not in result
+
+
+async def test_read_url_content_at_boundary(mock_httpx):
+    """read_url should return full content when exactly at truncation limit."""
+    exact_content = "B" * 2000
+    mock_httpx.get.return_value = _mock_response(text=exact_content)
+
+    result, error = await read_url("https://unique-test-url-boundary.example.com")
+
+    assert error is None
+    assert len(result) == 2000
+
+
+async def test_read_url_short_content_no_truncation(mock_httpx):
+    """read_url should not truncate content shorter than limit."""
+    short_content = "C" * 500
+    mock_httpx.get.return_value = _mock_response(text=short_content)
+
+    result, error = await read_url("https://unique-test-url-short.example.com")
+
+    assert error is None
+    assert len(result) == 500
+
+
+async def test_read_url_sends_correct_headers(mock_httpx):
+    """read_url should send Jina headers that strip images, links, and boilerplate."""
+    mock_httpx.get.return_value = _mock_response(text="D" * 200)
+
+    await read_url("https://unique-test-url-headers.example.com")
+
+    call_kwargs = mock_httpx.get.call_args
+    headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers", {})
+
+    assert headers["X-Respond-With"] == "text"
+    assert headers["X-Retain-Images"] == "none"
+    assert headers["X-Retain-Links"] == "none"
+    assert "X-Remove-Selector" in headers
+
+
+# ──────────────────────────────────────────────
+# Config override tests
+# ──────────────────────────────────────────────
+
+
+async def test_search_hn_respects_custom_max_search_results(mock_httpx):
+    """Changing MAX_SEARCH_RESULTS should change the cap on returned results."""
+    hits = [
+        {
+            "title": f"Article {i}",
+            "url": f"https://example.com/{i}",
+            "points": 100 - i,
+            "num_comments": 10,
+            "objectID": str(30000 + i),
+            "created_at": "2026-02-19T00:00:00Z",
+        }
+        for i in range(20)
+    ]
+    mock_httpx.get.return_value = _mock_response(json_data={"hits": hits})
+
+    with patch("app.tools.settings") as mock_settings:
+        mock_settings.max_search_results = 5
+        result, error = await search_hn(query="unique_config_cap_test", limit=20)
+
+    assert error is None
+    assert "5." in result
+    assert "6." not in result
+
+
+async def test_read_url_respects_custom_content_length(mock_httpx):
+    """Changing MAX_ARTICLE_CONTENT_LENGTH should change truncation."""
+    long_content = "E" * 5000
+    mock_httpx.get.return_value = _mock_response(text=long_content)
+
+    with patch("app.tools.settings") as mock_settings:
+        mock_settings.max_article_content_length = 500
+        mock_settings.jina_api_key = ""
+        result, error = await read_url("https://unique-test-url-custom-len.example.com")
+
+    assert error is None
+    assert len(result) == 500
+
+
+async def test_read_url_respects_larger_content_length(mock_httpx):
+    """Bumping MAX_ARTICLE_CONTENT_LENGTH up should return more content."""
+    long_content = "F" * 5000
+    mock_httpx.get.return_value = _mock_response(text=long_content)
+
+    with patch("app.tools.settings") as mock_settings:
+        mock_settings.max_article_content_length = 3000
+        mock_settings.jina_api_key = ""
+        result, error = await read_url("https://unique-test-url-larger-len.example.com")
+
+    assert error is None
+    assert len(result) == 3000
+
+
+def test_tool_definitions_reflect_max_search_results():
+    """Tool description for limit should match the configured max_search_results."""
+    with patch("app.tools.settings") as mock_settings:
+        mock_settings.max_search_results = 7
+        defs = get_tool_definitions()
+
+    search_def = defs[0]
+    limit_desc = search_def["function"]["parameters"]["properties"]["limit"]["description"]
+    assert "1-7" in limit_desc
+    assert "Default: 7" in limit_desc
+
+
+def test_tool_definitions_reflect_default_max_search_results():
+    """Tool description should use the real default (15) when config is not overridden."""
+    defs = get_tool_definitions()
+
+    search_def = defs[0]
+    limit_desc = search_def["function"]["parameters"]["properties"]["limit"]["description"]
+    assert "1-15" in limit_desc
+    assert "Default: 15" in limit_desc
 
 
 # ──────────────────────────────────────────────

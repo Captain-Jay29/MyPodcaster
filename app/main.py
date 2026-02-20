@@ -3,6 +3,7 @@ Entry point. Creates FastAPI app, mounts Gradio, sets up lifespan.
 """
 
 import contextlib
+import os
 from contextlib import asynccontextmanager
 
 import gradio as gr
@@ -14,7 +15,7 @@ from app.config import settings
 from app.jobs import cleanup_old_jobs
 from app.tools import close_http_client
 from app.tts import cleanup_old_audio
-from app.ui import build_ui
+from app.ui import CUSTOM_CSS, HEAD_HTML, build_ui
 
 # ──────────────────────────────────────────────
 # Sentry (optional)
@@ -60,7 +61,15 @@ app.include_router(router)
 # Mount Gradio UI
 demo = build_ui()
 demo = demo.queue(max_size=20, default_concurrency_limit=5)
-gr.mount_gradio_app(app, demo, path="/")
+audio_dir = os.path.realpath(settings.audio_cache_dir)
+gr.mount_gradio_app(
+    app,
+    demo,
+    path="/",
+    css=CUSTOM_CSS,
+    head=HEAD_HTML,
+    allowed_paths=[audio_dir],
+)
 
 
 if __name__ == "__main__":

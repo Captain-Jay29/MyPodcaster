@@ -18,7 +18,7 @@ from app.models import (
     ErrorSeverity,
     Job,
 )
-from app.tools import TOOL_DEFINITIONS, read_url, search_hn
+from app.tools import get_tool_definitions, read_url, search_hn
 
 # ──────────────────────────────────────────────
 # OpenAI Client (singleton)
@@ -125,7 +125,7 @@ async def execute_tool(
     if tool_name == "search_hn":
         query = arguments.get("query", "")
         sort = arguments.get("sort", "points")
-        limit = arguments.get("limit", 20)
+        limit = arguments.get("limit", settings.max_search_results)
 
         logger.info(
             "[{}] search_hn(query={!r}, sort={!r}, limit={})", job.job_id, query, sort, limit
@@ -204,7 +204,7 @@ async def _agent_loop(
         response = await client.chat.completions.create(  # type: ignore[call-overload]
             model=settings.openai_model,
             messages=messages,
-            tools=TOOL_DEFINITIONS,
+            tools=get_tool_definitions(),
             tool_choice="none" if budget_exceeded else "auto",
         )
 
