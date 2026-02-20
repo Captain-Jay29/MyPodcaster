@@ -5,6 +5,7 @@ Both return (content_string, optional_error) tuples internally.
 """
 
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urldefrag
 
 import httpx
 from cachetools import TTLCache
@@ -187,6 +188,11 @@ async def read_url(url: str) -> tuple[str, BriefingError | None]:
     Read article content via Jina Reader API.
     Returns (content_string, optional_error).
     """
+    original_url = url
+    url, fragment = urldefrag(url)  # strip #fragment — Jina returns full page regardless
+    if fragment:
+        logger.debug("read_url stripped fragment #{} from {}", fragment, original_url)
+
     if url in _url_cache:
         logger.debug("read_url cache hit: {}", url)
         return _url_cache[url], None
