@@ -1,6 +1,5 @@
 """Tests for app/ui.py — WaveSurfer.js audio player and Gradio UI."""
 
-
 import gradio as gr
 
 from app.ui import (

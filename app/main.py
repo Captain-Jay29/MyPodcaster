@@ -63,8 +63,11 @@ demo = build_ui()
 demo = demo.queue(max_size=20, default_concurrency_limit=5)
 audio_dir = os.path.realpath(settings.audio_cache_dir)
 gr.mount_gradio_app(
-    app, demo, path="/",
-    css=CUSTOM_CSS, head=HEAD_HTML,
+    app,
+    demo,
+    path="/",
+    css=CUSTOM_CSS,
+    head=HEAD_HTML,
     allowed_paths=[audio_dir],
 )
 
