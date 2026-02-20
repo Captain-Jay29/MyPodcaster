@@ -116,8 +116,10 @@ def test_token_growth_curve(agent_trace, capsys):
     total_completion = sum(t.completion_tokens for t in turns)
     if total_prompt > 0:
         ratio = total_completion / total_prompt
-        print(f"\nCompletion/Prompt ratio: {ratio:.2f} "
-              f"({total_completion:,} completion / {total_prompt:,} prompt)")
+        print(
+            f"\nCompletion/Prompt ratio: {ratio:.2f} "
+            f"({total_completion:,} completion / {total_prompt:,} prompt)"
+        )
 
     # This test always passes — it's a reporting test
     assert len(turns) > 0, "No turns recorded"
@@ -151,9 +153,7 @@ def test_latency_report(agent_trace, capsys):
         if tc.name == "read_url":
             url = tc.args.get("url", "")
             url_snippet = f" ({url[:50]}...)" if len(url) > 50 else f" ({url})"
-        lines.append(
-            f"  {tc.name}{url_snippet}: {tc.latency_ms:.0f}ms, {tc.result_chars:,} chars"
-        )
+        lines.append(f"  {tc.name}{url_snippet}: {tc.latency_ms:.0f}ms, {tc.result_chars:,} chars")
 
     lines.append("=" * 78)
 

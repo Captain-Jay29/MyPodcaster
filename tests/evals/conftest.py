@@ -207,12 +207,14 @@ def agent_trace():
         await asyncio.sleep(0.01)  # simulate minimal latency
         result = search_result
         elapsed_ms = (time.perf_counter() - start) * 1000
-        tool_call_log.append(ToolCallTrace(
-            name="search_hn",
-            args={"query": query, "sort": sort, "limit": limit},
-            latency_ms=elapsed_ms,
-            result_chars=len(result),
-        ))
+        tool_call_log.append(
+            ToolCallTrace(
+                name="search_hn",
+                args={"query": query, "sort": sort, "limit": limit},
+                latency_ms=elapsed_ms,
+                result_chars=len(result),
+            )
+        )
         return result, None
 
     async def mock_read_url(url: str):
@@ -220,12 +222,14 @@ def agent_trace():
         await asyncio.sleep(0.01)
         content = content_map.get(url, f"[ERROR] URL not found in fixtures: {url}")
         elapsed_ms = (time.perf_counter() - start) * 1000
-        tool_call_log.append(ToolCallTrace(
-            name="read_url",
-            args={"url": url},
-            latency_ms=elapsed_ms,
-            result_chars=len(content),
-        ))
+        tool_call_log.append(
+            ToolCallTrace(
+                name="read_url",
+                args={"url": url},
+                latency_ms=elapsed_ms,
+                result_chars=len(content),
+            )
+        )
         return content, None
 
     # Wrap the OpenAI create call to capture per-turn token data
@@ -260,15 +264,17 @@ def agent_trace():
             if response.choices and response.choices[0].message.tool_calls:
                 tool_call_count = len(response.choices[0].message.tool_calls)
 
-            turn_log.append(TurnTrace(
-                turn_num=turn_num,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                total_tokens=total,
-                cumulative_tokens=cumulative_tokens,
-                latency_ms=elapsed_ms,
-                tool_call_count=tool_call_count,
-            ))
+            turn_log.append(
+                TurnTrace(
+                    turn_num=turn_num,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=total,
+                    cumulative_tokens=cumulative_tokens,
+                    latency_ms=elapsed_ms,
+                    tool_call_count=tool_call_count,
+                )
+            )
 
             return response
 

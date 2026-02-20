@@ -98,17 +98,13 @@ def test_conciseness(agent_trace):
     for article in agent_trace.script.articles:
         text = article.summary_text
         word_count = len(text.split())
-        assert 50 <= word_count <= 90, (
-            f"'{article.title}' has {word_count} words (target: 50-90)"
-        )
+        assert 50 <= word_count <= 90, f"'{article.title}' has {word_count} words (target: 50-90)"
         assert "http" not in text, f"'{article.title}' contains a URL"
         assert "**" not in text, f"'{article.title}' contains markdown bold"
         assert "- " not in text.split("\n")[0] or True  # allow inline dashes
         # Check for bullet-point lines
         for line in text.split("\n"):
-            assert not line.strip().startswith("- "), (
-                f"'{article.title}' contains bullet points"
-            )
+            assert not line.strip().startswith("- "), f"'{article.title}' contains bullet points"
 
 
 # ──────────────────────────────────────────────
