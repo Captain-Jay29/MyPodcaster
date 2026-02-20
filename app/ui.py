@@ -4,6 +4,7 @@ Gradio Blocks UI. Calls internal Python functions directly (same process).
 
 import asyncio
 import contextlib
+import os
 
 import gradio as gr
 
@@ -22,47 +23,75 @@ CUSTOM_CSS = """
 .article-row:last-child {
     border-bottom: none;
 }
-.article-row .audio-player {
-    min-width: 200px;
-}
+"""
 
-/* Compact audio player: fit waveform + duration without overlap */
-.audio-player .minimal-audio-player {
-    width: 100% !important;
-    padding: var(--spacing-xs) var(--spacing-sm) !important;
-    gap: var(--spacing-xs) !important;
-    background: #e8f0fe !important;
-    border-radius: var(--radius-md) !important;
+HEAD_HTML = """
+<script src="https://unpkg.com/wavesurfer.js@7/dist/wavesurfer.min.js"></script>
+<script>
+function _wsInitPlayer(el) {
+    if (el.getAttribute('data-ws-ready')) return;
+    el.setAttribute('data-ws-ready', '1');
+    var url = el.getAttribute('data-audio-url');
+    var waveDiv = el.querySelector('.ws-waveform');
+    var btn = el.querySelector('.ws-play');
+    var timeEl = el.querySelector('.ws-time');
+    var ws = WaveSurfer.create({
+        container: waveDiv,
+        height: 32,
+        waveColor: '#5a5a6e',
+        progressColor: '#00b4ff',
+        cursorColor: '#00b4ff',
+        cursorWidth: 1,
+        url: url
+    });
+    function fmt(s) {
+        var m = Math.floor(s / 60);
+        var sec = Math.floor(s % 60);
+        return m + ':' + (sec < 10 ? '0' : '') + sec;
+    }
+    ws.on('ready', function() { timeEl.textContent = '0:00 / ' + fmt(ws.getDuration()); });
+    ws.on('audioprocess', function() { timeEl.textContent = fmt(ws.getCurrentTime()) + ' / ' + fmt(ws.getDuration()); });
+    ws.on('seeking', function() { timeEl.textContent = fmt(ws.getCurrentTime()) + ' / ' + fmt(ws.getDuration()); });
+    ws.on('play', function() { btn.textContent = '⏸'; });
+    ws.on('pause', function() { btn.textContent = '▶'; });
+    ws.on('finish', function() { btn.textContent = '▶'; });
+    btn.addEventListener('click', function() { ws.playPause(); });
+    var speedBtn = el.querySelector('.ws-speed');
+    var speeds = [1, 1.5, 2];
+    var speedIdx = 0;
+    speedBtn.addEventListener('click', function() {
+        speedIdx = (speedIdx + 1) % speeds.length;
+        ws.setPlaybackRate(speeds[speedIdx]);
+        speedBtn.textContent = speeds[speedIdx] + 'x';
+    });
 }
-.audio-player .waveform-wrapper {
-    flex: 1 1 0 !important;
-    min-width: 0 !important;
-    overflow: hidden !important;
+function _wsScanAll() {
+    if (typeof WaveSurfer === 'undefined') { setTimeout(_wsScanAll, 100); return; }
+    document.querySelectorAll('.ws-player:not([data-ws-ready])').forEach(_wsInitPlayer);
 }
-.audio-player .timestamp {
-    font-size: 11px !important;
-    min-width: 32px !important;
-}
-/* Reduce waveform vertical height */
-.audio-player .waveform-wrapper ::part(wrapper) {
-    height: 24px !important;
-    margin-bottom: 0 !important;
-}
-/* Light blue background for the full audio component area */
-.audio-player .component-wrapper {
-    padding: var(--spacing-xs) !important;
-    background: #e8f0fe !important;
-    border-radius: var(--radius-md) !important;
-}
-.audio-player .standard-player {
-    padding: var(--spacing-xs) !important;
-    background: #e8f0fe !important;
-    border-radius: var(--radius-md) !important;
-}
-/* Reduce waveform height in standard player too */
-.audio-player #waveform {
-    height: 28px !important;
-}
+new MutationObserver(function() { _wsScanAll(); }).observe(document.body, {childList: true, subtree: true});
+_wsScanAll();
+</script>
+"""
+
+
+def wavesurfer_html(audio_path: str) -> str:
+    """Return HTML for a minimalist WaveSurfer.js player."""
+    return f"""
+<div class="ws-player" data-audio-url="/gradio_api/file={audio_path}" style="width:100%;">
+  <div class="ws-waveform" style="width:100%; height:32px;"></div>
+  <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+    <button class="ws-play"
+            style="background:none; border:none; cursor:pointer; color:#00b4ff; font-size:18px; padding:0; line-height:1;"
+            aria-label="Play/Pause">▶</button>
+    <span class="ws-time" style="font-size:11px; color:#00b4ff; font-family:monospace; flex:1;">
+      0:00 / 0:00
+    </span>
+    <button class="ws-speed"
+            style="background:none; border:1px solid #00b4ff; border-radius:4px; cursor:pointer; color:#00b4ff; font-size:10px; padding:1px 5px; font-family:monospace; line-height:1.4;"
+            aria-label="Playback speed">1x</button>
+  </div>
+</div>
 """
 
 
@@ -70,7 +99,7 @@ def _hidden_outputs():
     """Return all article card outputs in hidden state."""
     rows = tuple(gr.Row(visible=False) for _ in range(MAX_ARTICLES))
     markdowns = tuple(gr.Markdown("") for _ in range(MAX_ARTICLES))
-    audios = tuple(gr.Audio(visible=False) for _ in range(MAX_ARTICLES))
+    audios = tuple(gr.HTML("", visible=False) for _ in range(MAX_ARTICLES))
     return rows, markdowns, audios
 
 
@@ -135,15 +164,16 @@ async def generate_briefing_handler(interests: str):
         )
 
         if audio_path:
-            audio_updates.append(gr.Audio(value=audio_path, visible=True))
+            real_path = os.path.realpath(audio_path)
+            audio_updates.append(gr.HTML(value=wavesurfer_html(real_path), visible=True))
         else:
-            audio_updates.append(gr.Audio(visible=False))
+            audio_updates.append(gr.HTML("", visible=False))
 
     # Hide remaining unused slots
     for _ in range(MAX_ARTICLES - len(job.result.articles)):
         row_updates.append(gr.Row(visible=False))
         markdown_updates.append(gr.Markdown(""))
-        audio_updates.append(gr.Audio(visible=False))
+        audio_updates.append(gr.HTML("", visible=False))
 
     succeeded = sum(1 for f in job.result.audio_files.values() if f)
     total = len(job.result.articles)
@@ -158,7 +188,6 @@ def build_ui() -> gr.Blocks:
     """Build and return the Gradio Blocks UI."""
     with gr.Blocks(
         title="Audio Briefing Engine",
-        css=CUSTOM_CSS,
     ) as demo:
         gr.Markdown(
             "# Audio Briefing Engine\n"
@@ -187,10 +216,9 @@ def build_ui() -> gr.Blocks:
                 with gr.Column(scale=3):
                     md = gr.Markdown("")
                 with gr.Column(scale=1, min_width=220):
-                    audio = gr.Audio(
+                    audio = gr.HTML(
+                        value="",
                         visible=False,
-                        show_label=False,
-                        elem_classes=["audio-player"],
                     )
             article_rows.append(row)
             article_markdowns.append(md)
